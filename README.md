@@ -143,9 +143,28 @@ It is not intended for production deployment until its cryptographic implementat
 
 ## Development Status
 
-**Experimental — Initial Development**
+**Experimental — v0.1 core implemented**
 
-The architecture and implementation are under development. Features will be marked as implemented only after functional and interoperability testing.
+v0.1 is a working TLS 1.3 client/server core in NASM for Windows x86-64:
+
+- TLS 1.3 with external PSK authentication (`psk_ke`);
+- cipher suite `TLS_AES_128_GCM_SHA256`;
+- SHA-256, HMAC-SHA256, HKDF, AES-128-GCM (AES-NI + PCLMULQDQ);
+- record protection, key schedule, encrypted handshake and application data;
+- transport-agnostic `feed` / `drain` byte-stream API;
+- KAT and loopback tests.
+
+Build and test:
+
+```text
+powershell -ExecutionPolicy Bypass -File build.ps1 -Clean -Test
+```
+
+or `make test`.
+
+Not yet implemented: X25519/ECDHE, certificates and signatures,
+ChaCha20-Poly1305, SHA-384, TCP/async I/O, HTTP/1.1 and HTTP/2, Linux support.
+The engine has not been independently reviewed and is not production-ready.
 
 ## License
 
