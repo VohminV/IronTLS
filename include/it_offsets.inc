@@ -39,11 +39,13 @@
 %define CTX_MASTER        512
 %define CTX_C_HS_SECRET   544
 %define CTX_S_HS_SECRET   576
-%define CTX_RX            608
-%define CTX_TX            16992
-%define CTX_HS            33376
-%define CTX_APP           66144
-%define CTX_SCRATCH       82528
+%define CTX_EPHEM_PRIV    608
+%define CTX_SHARED        640
+%define CTX_RX            672
+%define CTX_TX            17056
+%define CTX_HS            33440
+%define CTX_APP           66208
+%define CTX_SCRATCH       82592
 
 %define IT_RX_CAP         16384
 %define IT_TX_CAP         16384
@@ -66,6 +68,7 @@
 
 %define FLAG_HS_KEYS      1
 %define FLAG_APP_KEYS     2
+%define FLAG_DHE          8
 
 %define IT_OK             0
 %define IT_NEED_MORE      1

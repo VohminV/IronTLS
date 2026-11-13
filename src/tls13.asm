@@ -46,11 +46,13 @@ extern it_hkdf_extract
 extern it_hkdf_expand_label
 extern it_aes128gcm_seal
 extern it_aes128gcm_open
+extern it_x25519
+extern it_x25519_base
 extern __imp_BCryptGenRandom
 
 ; void it_tls_clear(it_tls_ctx *ctx)
 it_tls_clear:
-    mov     edx, 98912
+    mov     edx, 98976
     jmp     it_memzero
 
 ; int it_tls_init(it_tls_ctx *ctx, int role, const void *psk, size_t psk_len,
@@ -87,7 +89,7 @@ it_tls_init:
     mov     r15, [rbp + 48]
 
     mov     rcx, rbx
-    mov     edx, 98912
+    mov     edx, 98976
     call    it_memzero
 
     mov     [rbx + CTX_ROLE], r12d
@@ -777,7 +779,7 @@ tls_client_send_ch:
     ja      .proto
     lea     r13, [rbx + CTX_APP]
     mov     r14d, r12d
-    add     r14d, 106
+    add     r14d, 156
     cmp     r14d, IT_APP_CAP
     ja      .nobuf
 
@@ -796,53 +798,75 @@ tls_client_send_ch:
     call    rng_bytes
     test    eax, eax
     jnz     .crypto
+
     mov     byte [r13 + 38], 0
-    mov     byte [r13 + 39], 0
-    mov     byte [r13 + 40], 2
-    mov     byte [r13 + 41], 13h
-    mov     byte [r13 + 42], 1
+    mov     word [r13 + 39], 0200h          ; cipher_suites length = 2
+    mov     word [r13 + 41], 0113h          ; TLS_AES_128_GCM_SHA256 (wire 13 01)
     mov     byte [r13 + 43], 1
     mov     byte [r13 + 44], 0
     mov     eax, r12d
-    add     eax, 59
+    add     eax, 109
     mov     [r13 + 46], al
     shr     eax, 8
     mov     [r13 + 45], al
-    mov     byte [r13 + 47], 0
-    mov     byte [r13 + 48], 2bh
-    mov     byte [r13 + 49], 0
-    mov     byte [r13 + 50], 3
+
+    ; supported_versions: TLS 1.3
+    mov     word [r13 + 47], 2b00h
+    mov     word [r13 + 49], 0300h
     mov     byte [r13 + 51], 2
-    mov     byte [r13 + 52], 3
-    mov     byte [r13 + 53], 4
-    mov     byte [r13 + 54], 0
-    mov     byte [r13 + 55], 2dh
-    mov     byte [r13 + 56], 0
-    mov     byte [r13 + 57], 2
-    mov     byte [r13 + 58], 1
-    mov     byte [r13 + 59], 0
-    mov     byte [r13 + 60], 0
-    mov     byte [r13 + 61], 29h
+    mov     word [r13 + 52], 0403h
+
+    ; supported_groups: x25519
+    mov     word [r13 + 54], 0a00h
+    mov     word [r13 + 56], 0400h
+    mov     word [r13 + 58], 0200h
+    mov     word [r13 + 60], 1d00h
+
+    ; psk_key_exchange_modes: psk_dhe_ke
+    mov     word [r13 + 62], 2d00h
+    mov     word [r13 + 64], 0200h
+    mov     byte [r13 + 66], 1
+    mov     byte [r13 + 67], 1
+
+    ; key_share: x25519 ephemeral key
+    mov     word [r13 + 68], 3300h
+    mov     word [r13 + 70], 2600h          ; ext data length = 38
+    mov     word [r13 + 72], 2400h          ; client_shares length = 36
+    mov     word [r13 + 74], 1d00h
+    mov     word [r13 + 76], 2000h
+    lea     rcx, [rbx + CTX_EPHEM_PRIV]
+    mov     edx, 32
+    call    rng_bytes
+    test    eax, eax
+    jnz     .crypto
+    lea     rcx, [r13 + 78]
+    lea     rdx, [rbx + CTX_EPHEM_PRIV]
+    call    it_x25519_base
+    test    eax, eax
+    js      .done
+
+    ; pre_shared_key (must be last)
+    mov     word [r13 + 110], 2900h
     mov     eax, r12d
     add     eax, 42
-    mov     [r13 + 63], al
+    mov     [r13 + 113], al
     shr     eax, 8
-    mov     [r13 + 62], al
+    mov     [r13 + 112], al
     mov     eax, r12d
     add     eax, 6
-    mov     [r13 + 65], al
+    mov     [r13 + 115], al
     shr     eax, 8
-    mov     [r13 + 64], al
+    mov     [r13 + 114], al
     mov     eax, r12d
-    mov     [r13 + 67], al
+    mov     [r13 + 117], al
     shr     eax, 8
-    mov     [r13 + 66], al
-    lea     rcx, [r13 + 68]
+    mov     [r13 + 116], al
+    lea     rcx, [r13 + 118]
     lea     rdx, [rbx + CTX_IDENTITY]
     mov     r8, r12
     call    it_memcpy
     mov     r15d, r12d
-    add     r15d, 68
+    add     r15d, 118
     mov     dword [r13 + r15], 0
     add     r15d, 4
     mov     byte [r13 + r15], 0
@@ -941,7 +965,7 @@ tls_handle_client_hello:
     push    r13
     push    r14
     push    r15
-    sub     rsp, 584
+    sub     rsp, 648
 
     mov     rbx, rcx
     mov     r12, rdx
@@ -1049,6 +1073,10 @@ tls_handle_client_hello:
     je      .ext_sv
     cmp     ecx, 45
     je      .ext_modes
+    cmp     ecx, 10
+    je      .ext_groups
+    cmp     ecx, 51
+    je      .ext_ks
     cmp     ecx, 41
     je      .ext_psk
     mov     r14, r8
@@ -1072,9 +1100,58 @@ tls_handle_client_hello:
     jne     .proto
     cmp     byte [r14], 1
     jne     .proto
-    cmp     byte [r14 + 1], 0
+    cmp     byte [r14 + 1], 1
     jne     .proto
     or      dword [rsp + 80], 2
+    mov     r14, r8
+    jmp     .eloop
+
+.ext_groups:
+    cmp     edx, 4
+    jb      .proto
+    movzx   eax, word [r14]
+    rol     ax, 8
+    movzx   ecx, ax
+    mov     eax, edx
+    sub     eax, 2
+    cmp     ecx, eax
+    jne     .proto
+    test    ecx, 1
+    jnz     .proto
+    lea     r9, [r14 + 2]
+    lea     r10, [r14 + rcx + 2]
+.scan_groups:
+    cmp     r9, r10
+    jae     .proto
+    movzx   eax, word [r9]
+    rol     ax, 8
+    cmp     ax, 29
+    je      .group_ok
+    add     r9, 2
+    jmp     .scan_groups
+.group_ok:
+    or      dword [rsp + 80], 4
+    mov     r14, r8
+    jmp     .eloop
+
+.ext_ks:
+    cmp     edx, 38
+    jne     .proto
+    movzx   eax, word [r14]
+    rol     ax, 8
+    cmp     ax, 36
+    jne     .proto
+    movzx   eax, word [r14 + 2]
+    rol     ax, 8
+    cmp     ax, 29
+    jne     .proto
+    movzx   eax, word [r14 + 4]
+    rol     ax, 8
+    cmp     ax, 32
+    jne     .proto
+    lea     rax, [r14 + 6]
+    mov     [rsp + 552], rax
+    or      dword [rsp + 80], 8
     mov     r14, r8
     jmp     .eloop
 
@@ -1149,7 +1226,7 @@ tls_handle_client_hello:
     jmp     .eloop
 
 .edone:
-    cmp     dword [rsp + 80], 3
+    cmp     dword [rsp + 80], 15
     jne     .proto
     cmp     qword [rsp + 64], 0
     je      .proto
@@ -1207,11 +1284,30 @@ tls_handle_client_hello:
     mov     r8, r13
     call    tls_transcript_update
 
+    ; server ephemeral X25519 key share
+    lea     rcx, [rbx + CTX_EPHEM_PRIV]
+    mov     edx, 32
+    call    rng_bytes
+    test    eax, eax
+    jnz     .crypto
+    lea     rcx, [rsp + 560]
+    lea     rdx, [rbx + CTX_EPHEM_PRIV]
+    call    it_x25519_base
+    test    eax, eax
+    js      .done
+    lea     rcx, [rbx + CTX_SHARED]
+    lea     rdx, [rbx + CTX_EPHEM_PRIV]
+    mov     r8, [rsp + 552]
+    call    it_x25519
+    test    eax, eax
+    js      .done
+    or      dword [rbx + CTX_FLAGS], FLAG_DHE
+
     lea     r14, [rbx + CTX_APP]
     mov     byte [r14], 2
     mov     byte [r14 + 1], 0
     mov     byte [r14 + 2], 0
-    mov     byte [r14 + 3], 34h
+    mov     byte [r14 + 3], 92
     mov     byte [r14 + 4], 3
     mov     byte [r14 + 5], 3
     lea     rcx, [r14 + 6]
@@ -1220,34 +1316,34 @@ tls_handle_client_hello:
     test    eax, eax
     jnz     .crypto
     mov     byte [r14 + 38], 0
-    mov     byte [r14 + 39], 13h
-    mov     byte [r14 + 40], 1
+    mov     word [r14 + 39], 0113h
     mov     byte [r14 + 41], 0
-    mov     byte [r14 + 42], 0
-    mov     byte [r14 + 43], 0ch
-    mov     byte [r14 + 44], 0
-    mov     byte [r14 + 45], 2bh
-    mov     byte [r14 + 46], 0
-    mov     byte [r14 + 47], 2
-    mov     byte [r14 + 48], 3
-    mov     byte [r14 + 49], 4
-    mov     byte [r14 + 50], 0
-    mov     byte [r14 + 51], 29h
-    mov     byte [r14 + 52], 0
-    mov     byte [r14 + 53], 2
-    mov     byte [r14 + 54], 0
-    mov     byte [r14 + 55], 0
+    mov     word [r14 + 42], 3400h          ; extensions length = 52
+    mov     word [r14 + 44], 2b00h
+    mov     word [r14 + 46], 0200h
+    mov     word [r14 + 48], 0403h
+    mov     word [r14 + 50], 3300h
+    mov     word [r14 + 52], 2400h
+    mov     word [r14 + 54], 1d00h
+    mov     word [r14 + 56], 2000h
+    lea     rcx, [r14 + 58]
+    lea     rdx, [rsp + 560]
+    mov     r8d, 32
+    call    it_memcpy
+    mov     word [r14 + 90], 2900h
+    mov     word [r14 + 92], 0200h
+    mov     word [r14 + 94], 0000h
 
     mov     rcx, rbx
     mov     edx, 22
     mov     r8, r14
-    mov     r9d, 56
+    mov     r9d, 96
     call    tls_append_plain
     test    eax, eax
     js      .done
     mov     rcx, rbx
     mov     rdx, r14
-    mov     r8d, 56
+    mov     r8d, 96
     call    tls_transcript_update
 
     lea     rcx, [rbx + CTX_EARLY]
@@ -1259,7 +1355,7 @@ tls_handle_client_hello:
 
     lea     rcx, [rsp + 216]
     mov     edx, 32
-    lea     r8, [zeros32]
+    lea     r8, [rbx + CTX_SHARED]
     mov     r9d, 32
     lea     rax, [rsp + 248]
     mov     [rsp + 32], rax
@@ -1384,7 +1480,7 @@ tls_handle_client_hello:
     mov     eax, IT_ERR_CRYPTO
     jmp     .done
 .done:
-    add     rsp, 584
+    add     rsp, 648
     pop     r15
     pop     r14
     pop     r13
@@ -1478,6 +1574,8 @@ tls_handle_server_hello:
     mov     r8, rax
     cmp     ecx, 43
     je      .sv
+    cmp     ecx, 51
+    je      .ks
     cmp     ecx, 41
     je      .psk
     mov     r14, r8
@@ -1492,6 +1590,22 @@ tls_handle_server_hello:
     or      dword [rsp + 192], 1
     mov     r14, r8
     jmp     .eloop
+.ks:
+    cmp     edx, 36
+    jne     .proto
+    movzx   eax, word [r14]
+    rol     ax, 8
+    cmp     ax, 29
+    jne     .proto
+    movzx   eax, word [r14 + 2]
+    rol     ax, 8
+    cmp     ax, 32
+    jne     .proto
+    lea     rax, [r14 + 4]
+    mov     [rsp + 56], rax
+    or      dword [rsp + 192], 8
+    mov     r14, r8
+    jmp     .eloop
 .psk:
     cmp     edx, 2
     jne     .proto
@@ -1504,8 +1618,16 @@ tls_handle_server_hello:
     jmp     .eloop
 
 .edone:
-    cmp     dword [rsp + 192], 3
+    cmp     dword [rsp + 192], 11
     jne     .proto
+
+    lea     rcx, [rbx + CTX_SHARED]
+    lea     rdx, [rbx + CTX_EPHEM_PRIV]
+    mov     r8, [rsp + 56]
+    call    it_x25519
+    test    eax, eax
+    js      .done
+    or      dword [rbx + CTX_FLAGS], FLAG_DHE
 
     mov     rcx, rbx
     mov     rdx, r12
@@ -1521,7 +1643,7 @@ tls_handle_server_hello:
 
     lea     rcx, [rsp + 64]
     mov     edx, 32
-    lea     r8, [zeros32]
+    lea     r8, [rbx + CTX_SHARED]
     mov     r9d, 32
     lea     rax, [rsp + 96]
     mov     [rsp + 32], rax

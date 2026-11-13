@@ -4,7 +4,7 @@ CFLAGS  ?= -O2 -Wall -Wextra
 INCLUDES = -Iinclude
 BUILD   = build
 
-ASM_NAMES = it_mem sha256 hmac hkdf aes_gcm tls13
+ASM_NAMES = it_mem sha256 hmac hkdf aes_gcm x25519 tls13
 ASM_OBJS  = $(addprefix $(BUILD)/,$(addsuffix .obj,$(ASM_NAMES)))
 TESTS     = test_crypto test_tls loopback
 EXES      = $(addprefix $(BUILD)/,$(addsuffix .exe,$(TESTS)))

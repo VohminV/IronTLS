@@ -77,12 +77,14 @@ typedef struct {
     uint8_t  master_secret[32];           /* 512 */
     uint8_t  c_hs_secret[32];             /* 544 */
     uint8_t  s_hs_secret[32];             /* 576 */
-    uint8_t  rx[IT_RX_CAP];               /* 608 */
-    uint8_t  tx[IT_TX_CAP];               /* 16992 */
-    uint8_t  hs[IT_HS_CAP];               /* 33376 */
-    uint8_t  app[IT_APP_CAP];             /* 66144 */
-    uint8_t  scratch[IT_SCRATCH_CAP];     /* 82528 */
-} it_tls_ctx;                             /* 98912 */
+    uint8_t  ephem_priv[32];              /* 608 */
+    uint8_t  shared[32];                  /* 640 */
+    uint8_t  rx[IT_RX_CAP];               /* 672 */
+    uint8_t  tx[IT_TX_CAP];               /* 17056 */
+    uint8_t  hs[IT_HS_CAP];               /* 33440 */
+    uint8_t  app[IT_APP_CAP];             /* 66208 */
+    uint8_t  scratch[IT_SCRATCH_CAP];     /* 82592 */
+} it_tls_ctx;                             /* 98976 */
 
 /* Memory utilities */
 void  *it_memcpy(void *dst, const void *src, size_t len);
@@ -110,6 +112,10 @@ int  it_hkdf_expand(const void *prk, size_t prk_len,
 int  it_hkdf_expand_label(const void *secret, const char *label, size_t label_len,
                           const void *context, size_t context_len,
                           uint8_t *out, size_t out_len);
+
+/* X25519 (curve25519 ECDH) */
+int it_x25519(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32]);
+int it_x25519_base(uint8_t out[32], const uint8_t scalar[32]);
 
 /* AES-128-GCM */
 int it_aes128gcm_seal(const uint8_t key[16], const uint8_t nonce[12],

@@ -52,6 +52,10 @@ static void test_handshake(void)
 
     handshake(&c, &s, psk, sizeof(psk), id, sizeof(id) - 1, &ok);
     CHECK(ok, "psk handshake");
+    CHECK(memcmp(c.shared, s.shared, 32) == 0, "ecdhe shared secret agrees");
+    int nz = 0;
+    for (int i = 0; i < 32; i++) nz |= c.shared[i];
+    CHECK(nz != 0, "ecdhe shared secret non-zero");
 
     rc = it_tls_write(&c, "hello", 5);
     CHECK(rc == 0, "client write");
@@ -123,6 +127,29 @@ static void test_bad_binder(void)
     it_tls_feed(&s, buf, (size_t)n);
     rc = it_tls_step(&s);
     CHECK(rc == IT_ERR_PROTOCOL, "bad binder rejected");
+    it_tls_clear(&c);
+    it_tls_clear(&s);
+}
+
+static void test_bad_keyshare(void)
+{
+    static it_tls_ctx c, s;
+    const unsigned char psk[32] = { 3 };
+    const char id[] = "ks-id";
+    unsigned char buf[65536];
+    int n, rc;
+
+    memset(&c, 0, sizeof(c));
+    memset(&s, 0, sizeof(s));
+    it_tls_init(&c, IT_ROLE_CLIENT, psk, sizeof(psk), id, sizeof(id) - 1);
+    it_tls_init(&s, IT_ROLE_SERVER, psk, sizeof(psk), id, sizeof(id) - 1);
+    it_tls_step(&c);
+    n = it_tls_drain(&c, buf, sizeof(buf));
+    CHECK(n == 166, "keyshare ch size");
+    buf[85] ^= 1;                       /* inside x25519 key_share */
+    it_tls_feed(&s, buf, (size_t)n);
+    rc = it_tls_step(&s);
+    CHECK(rc == IT_ERR_PROTOCOL, "corrupted ClientHello rejected");
     it_tls_clear(&c);
     it_tls_clear(&s);
 }
@@ -230,6 +257,7 @@ int main(void)
     test_handshake();
     test_tamper();
     test_bad_binder();
+    test_bad_keyshare();
     test_partial();
     test_partial_drain();
     test_large();

@@ -1,20 +1,21 @@
 # IronTLS — этапы реализации
 
-Документ фиксирует этапы работ, объём текущей версии (v0.1) и критерии готовности.
+Документ фиксирует этапы работ, объём текущей версии (v0.2) и критерии готовности.
 Все этапы ниже, отмеченные `[x]`, реализованы в этом репозитории и покрыты тестами.
 
-## Область v0.1
+## Область v0.2
 
 Рабочее ядро TLS 1.3 на x86-64 (NASM, Win64 ABI), без внешних криптобиблиотек:
 
 - TLS 1.3 (RFC 8446), cipher suite `TLS_AES_128_GCM_SHA256`;
-- аутентификация через внешний PSK (`psk_ke`, RFC 8446 §4.2.11);
+- аутентификация через внешний PSK (`psk_dhe_ke`, RFC 8446 §4.2.11);
+- X25519 ECDHE (`key_share`), RFC 7748;
 - клиент и сервер, полностью на ассемблере;
 - транспорт — поток байт через API `feed` / `drain` (TCP подключается снаружи);
 - Windows x86-64, сборка MinGW-w64 + NASM.
 
-Вне области v0.1 (следующие этапы, см. ниже): X25519/ECDHE, сертификаты и
-подписи, ChaCha20-Poly1305, TCP/async I/O, HTTP/1.1, HTTP/2, nginx-интеграция.
+Вне области v0.2 (следующие этапы, см. ниже): сертификаты и подписи,
+ChaCha20-Poly1305, TCP/async I/O, HTTP/1.1, HTTP/2, nginx-интеграция.
 
 ## Этап 0. Каркас и ABI — `[x]`
 
@@ -83,9 +84,21 @@
 **Готово, когда:** `build.ps1 test` завершается успешно.
 Статус: готово.
 
-## Следующие этапы (не входят в v0.1)
+## Этап 6. X25519 + ECDHE (psk_dhe_ke) — `[x]`
 
-6. **X25519 + ECDHE** — `key_share`, режим `psk_dhe_ke`, KAT RFC 7748.
+- [x] X25519 по RFC 7748: Montgomery ladder, 5×51-битные limb'ы, constant-time cswap.
+- [x] `it_x25519` / `it_x25519_base`; клампинг скаляра, отказ при all-zero результате.
+- [x] KAT: RFC 7748 vector1/vector2, Alice/Bob public, shared secret, iterated 1000, low-order reject.
+- [x] ClientHello: `supported_versions`, `psk_key_exchange_modes` (`psk_dhe_ke`), `key_share` (x25519).
+- [x] ServerHello: `key_share` сервера, вычисление общего секрета на обеих сторонах.
+- [x] Key schedule: ECDHE-секрет как IKM первого HKDF-Extract (handshake_secret).
+- [x] Тесты: equality общего секрета client↔server, отклонение испорченного `key_share`.
+
+**Готово, когда:** все KAT RFC 7748 проходят, handshake с `psk_dhe_ke` завершается.
+Статус: готово.
+
+## Следующие этапы (не входят в v0.2)
+
 7. **Сертификаты** — X.509, RSA-PSS/ECDSA-P256 verify, CertificateVerify.
 8. **ChaCha20-Poly1305**, SHA-384, AES-256-GCM.
 9. **TCP engine** — Winsock/epoll-подобный слой, non-blocking, пул соединений.

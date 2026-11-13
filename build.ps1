@@ -12,7 +12,7 @@ if ($Clean -and (Test-Path $build)) {
 }
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 
-$asm = @('it_mem', 'sha256', 'hmac', 'hkdf', 'aes_gcm', 'tls13')
+$asm = @('it_mem', 'sha256', 'hmac', 'hkdf', 'aes_gcm', 'x25519', 'tls13')
 $objs = @()
 
 foreach ($name in $asm) {
